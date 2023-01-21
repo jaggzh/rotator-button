@@ -20,4 +20,4 @@ vi:
 		mpu9250-test.ino \
 		tests/test.c \
 		ringbuffer/ringbuffer.c \
-		ringbuffer/ringbuffer.h
+		ringbuffer/trb.h

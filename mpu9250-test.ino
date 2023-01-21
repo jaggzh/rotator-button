@@ -11,7 +11,7 @@
 #include "I2Cdev.h"
 #include "MPU9250.h"
 #include "BMP180.h"
-#include "ringbuffer/ringbuffer.h"
+#include "ringbuffer/trb.h"
 
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
@@ -56,6 +56,7 @@ float altitude;
 rb_st rb_real;
 rb_st *rb = &rb_real;
 float slow_mn=0, slow_mx=0;
+rb_st rb_real; rb_st *rb = rb_real;
 
 void update_sensor_data() {
 	getAccel_Data();
@@ -107,6 +108,11 @@ void setup() {
 	rb_setall(rb, axis_acc);
 	slow_mn = axis_acc;
 	slow_mx = axis_acc;
+
+#define RB_BUF_SIZE 10
+#define RB_WIN 5 // make this odd please.
+	rb_init(rb, RB_BUF_SIZE);
+	rb_setall(rb, axis_acc);
 }
 
 void loop() {

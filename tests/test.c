@@ -40,9 +40,9 @@ int main(int argc, char *argv[]) {
 		#define VRANGE_RAD 100
 		int range;
 		char plot;
-		range = 100;
-		if (rand() % 100 < 10) range = 200;
-		int random_value = VRANGE_MID + (rand() % (range*2)/2);
+		range = VRANGE_RAD;
+		if (rand() % 100 < 3) range = 400;
+		int random_value = VRANGE_MID + (rand() % (range*2)) - range;
 		if (rb->hd == rb->sz - 1) plot=1;
 		else plot=0;
 		ringbuffer_add(rb, random_value);
@@ -118,7 +118,7 @@ void plot_data(rb_st *rb, rb_st *rb_med) {
         printf(ABGRE "\033[%dC+\r", colm);
         printf(AYEL "\033[%dC*\r", col);
         /* printf(" -->%d %d\n", col, colm); */
-        /* usleep(10000); */
+        usleep(30000);
         PNL;
     }
 }
