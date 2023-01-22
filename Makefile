@@ -18,6 +18,5 @@ tests/test: tests/test.c ringbuffer/ringbuffer.c
 vi:
 	vim Makefile \
 		mpu9250-test.ino \
-		tests/test.c \
-		ringbuffer/ringbuffer.c \
-		ringbuffer/trb.h
+		~/Arduino/libraries/libtrb/src/ringbuffer.c \
+		~/Arduino/libraries/libtrb/src/trb.h

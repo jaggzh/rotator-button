@@ -2,7 +2,13 @@
 
 /* Axis of acceleration
  * (we use x axis, but if board orientation is changed... */
-#define axis_acc  ax
+#define axis_acc  az
+
+/* MIN_ACC_THRESH:
+ * don't let auto calibration tighten our envelope TOO much.
+ * This prevents the top of the envelop from getting too close to the
+ * bottom */
+#define MIN_ACC_THRESH 270
 
 #include "Wire.h"
 
@@ -11,7 +17,11 @@
 #include "I2Cdev.h"
 #include "MPU9250.h"
 #include "BMP180.h"
-#include "ringbuffer/trb.h"
+#define RB_DTYPE int16_t
+#include "trb.h"
+
+#define sp(v) Serial.print(v)
+#define spl(v) Serial.println(v)
 
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
@@ -53,17 +63,22 @@ float atm;
 float altitude;
 //BMP180 Barometer;
 
-rb_st rb_real;
-rb_st *rb = &rb_real;
-float slow_mn=0, slow_mx=0;
-rb_st rb_real; rb_st *rb = rb_real;
+#define RB_SIZE	      7
+#define RB_MED_WINDOW 7
+rb_st rb_real;     rb_st *rb = &rb_real;
+rb_st rb_med_real; rb_st *rb_med = &rb_med_real;
+float fast_mn, fast_mx;
+float slow_mn, slow_mx;
+float slow_acc;
 
-void update_sensor_data() {
+void update_sensor_data(void);
+
+void update_sensor_data(void) {
 	getAccel_Data();
-	getGyro_Data();
-	getCompassDate_calibrated(); // compass data has been calibrated here
-	getHeading();				//before we use this function we should run 'getCompassDate_calibrated()' frist, so that we can get calibrated data ,then we can get correct angle .
-	getTiltHeading();
+	/* getGyro_Data(); */
+	/* getCompassDate_calibrated(); // compass data has been calibrated here */
+	/* getHeading();				//before we use this function we should run 'getCompassDate_calibrated()' frist, so that we can get calibrated data ,then we can get correct angle . */
+	/* getTiltHeading(); */
 }
 
 void setup() {
@@ -105,35 +120,86 @@ void setup() {
 	spl(mz_centre);
 	spl("	 ");
 	update_sensor_data();
-	rb_setall(rb, axis_acc);
-	slow_mn = axis_acc;
-	slow_mx = axis_acc;
 
-#define RB_BUF_SIZE 10
-#define RB_WIN 5 // make this odd please.
-	rb_init(rb, RB_BUF_SIZE);
+	rb_init(rb, RB_SIZE);
+	rb_init(rb_med, RB_SIZE);
 	rb_setall(rb, axis_acc);
+
+	fast_mn = fast_mx = slow_mn = slow_mx = axis_acc;
+	slow_acc = axis_acc;
 }
 
+#define DELAY_SAMPLE_US 10000
+#define DELAY_PLOT_US   13000
+
 void loop() {
+	RB_DTYPE mv;
+	unsigned long cmicros = micros();
+	static unsigned long last_loop_us = cmicros;
+	static unsigned long last_sample_us = cmicros;
+	static unsigned long last_plot_us = cmicros;
 	#ifdef DO_RUN_CALIBRATION_EVAL
 		spl("Done. restart without Mxyz_init_calibrated()");
 		delay(5000);
 		return;
 	#endif
 
-	update_sensor_data();
-	rb_add(rb, axis_acc);
-	rb_minmax(rb);
-	slow_mn += (rb->mn - slow_mn)/64;
-	slow_mx += (rb->mx - slow_mx)/64;
 
-	//Serial.println("Acceleration(g) of X,Y,Z:");
-	#define sp(v) Serial.print(v)
-	#define spl(v) Serial.println(v)
-	sp("ax:");  sp(ax);
-	sp("smn:"); sp(slow_mn);
-	sp("smx:"); sp(slow_mx);
+	if (cmicros-last_sample_us >= DELAY_SAMPLE_US) {
+		last_sample_us = cmicros;
+
+		update_sensor_data();
+		rb_add(rb, axis_acc);
+		rb_median(rb, rb_med, RB_MED_WINDOW); // median filter the whole buffer
+		rb_minmax(rb_med);
+		fast_mx += (rb_med->mx - fast_mx)/32;
+		fast_mn += (rb_med->mn - fast_mn)/32;
+		if (slow_mx < rb_med->mx) slow_mx += (rb_med->mx - slow_mx)/256;
+		else                      slow_mx += (rb_med->mx - slow_mx)/4096;
+		if (slow_mn > rb_med->mn) slow_mn += (rb_med->mn - slow_mn)/256;
+		else                      slow_mn += (rb_med->mn - slow_mn)/4096;
+		/* Threshold tests: */
+
+		/* Minimum threshold above slow_min. Hard coded. */
+		/* if (slow_mx < slow_mn + MIN_ACC_THRESH) */
+		/* 	slow_mx = slow_mn + MIN_ACC_THRESH; */
+		/* At least 3 times the noise level (3 * mx-mn) */
+		int triglvl = (slow_mx-slow_mn)*.75 + slow_mn;
+		if (triglvl - slow_mn < ((float)fast_mx-fast_mn)*3)
+			triglvl = slow_mn + ((float)fast_mx-fast_mn)*3;
+		int untriglvl = (slow_mx-slow_mn)*.20 + slow_mn;
+
+		mv = rb_get_last(rb_med, 0);
+		slow_acc += (mv - slow_acc)/8;
+
+		static int trigger = 0;
+		if (slow_acc > triglvl) trigger = 1;
+		else if (slow_acc < untriglvl) trigger = 0;
+
+		sp(" med:");  sp(mv);
+		sp(" smed:"); sp(slow_acc);
+		sp(" smn:");  sp(slow_mn);
+		sp(" raw:");  sp(axis_acc);
+		sp(" smx:");  sp(slow_mx);
+		sp(" SW:");   sp(-4500 + trigger*100);
+		sp(" lvl:");  sp(triglvl);
+		sp(" ulvl:"); sp(untriglvl);
+		sp(" fmx:");  sp(fast_mx);
+		sp(" fmn:");  sp(fast_mn);
+		/* sp(" us:");  sp(cmicros-last_loop_us); */
+		/* last_loop_us = cmicros; */
+		spl("");
+	}
+
+	/* sp(" mn:"); sp(rb->mn); */
+	/* sp(" mx:"); sp(rb->mx); */
+	/* for (int i=0; i<rb->sz; i++) { */
+	/* 	Serial.print(" ["); */
+	/* 	Serial.print(i); */
+	/* 	Serial.print("]"); */
+	/* 	Serial.print(rb->d[i]); */
+	/* } */
+	/* Serial.print("\n"); */
 	/* Serial.print(" ay:"); */
 	/* Serial.print(ay); */
 	/* Serial.print(" az:"); */
@@ -179,8 +245,8 @@ void loop() {
 	sp(altitude, 2); //display 2 decimal places
 	spl(" m");
 	*/
-	spl();
-	delay(25);
+	//spl();
+	/* delay(25); */
 
 }
 
@@ -278,7 +344,8 @@ void get_one_sample_date_mxyz()
 
 void getAccel_DataRaw(void)
 {
-	accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz);
+	/* accelgyro.getMotion9(&ax, &ay, &az, &gx, &gy, &gz, &mx, &my, &mz); */
+	accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 }
 
 void getAccel_Data(void)
