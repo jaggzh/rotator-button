@@ -19,6 +19,8 @@
 #include "BMP180.h"
 #define RB_DTYPE int16_t
 #include "trb.h"
+#include "tone.h"
+#include <InputDebounce.h>
 
 #define sp(v) Serial.print(v)
 #define spl(v) Serial.println(v)
@@ -38,6 +40,10 @@ float tiltheading;
 float Axyz[3];
 float Gxyz[3];
 float Mxyz[3];
+
+static InputDebounce ourBtn(PIN_BTN_OURS,
+                            20,
+                            InputDebounce::PIM_INT_PULL_UP_RES);
 
 #define sample_num_mdate  5000
 
@@ -71,6 +77,12 @@ float fast_mn, fast_mx;
 float slow_mn, slow_mx;
 float slow_acc;
 
+enum en_modez {
+	MO_NORMAL=0,
+	MO_CALQUICK,
+	MO_CALQUICK_DONE,
+} mode=MO_NORMAL;
+
 void update_sensor_data(void);
 
 void update_sensor_data(void) {
@@ -81,15 +93,34 @@ void update_sensor_data(void) {
 	/* getTiltHeading(); */
 }
 
-void setup() {
-	// join I2C bus (I2Cdev library doesn't do this automatically)
-	Wire.begin();
+void ourbtn_released_cb(uint8_t pinIn) {
+	(void)pinIn; // unused
+	if (mode == MO_CALQUICK_DONE) {
+		mode = MO_NORMAL;
+	}
+}
+void ourbtn_pressed_dur_cb(uint8_t pinIn, unsigned long dur) {
+	(void)pinIn; // unused
+	(void)dur;
+	if (mode == MO_NORMAL) {
+		tone_freq_durms(440, 200);
+		mode = MO_CALQUICK;
+	}
+}
 
+void setup() {
 	// initialize serial communication
 	// (38400 chosen because it works as well at 8MHz as it does at 16MHz, but
 	// it's really up to you depending on your project)
 	Serial.begin(115200);
-	delay(2000);
+	// join I2C bus (I2Cdev library doesn't do this automatically)
+	Wire.begin();
+	delay(500);
+	tone_quick_freq(294);
+
+	// Logic button output
+	pinMode(PIN_BTN_TX, OUTPUT);
+	digitalWrite(PIN_BTN_TX, HIGH);
 
 	// initialize device
 	spl("Initializing I2C devices...");
@@ -100,7 +131,7 @@ void setup() {
 	spl("Testing device connections...");
 	spl(accelgyro.testConnection() ? "MPU9250 connection successful" : "MPU9250 connection failed");
 
-	delay(1000);
+	delay(200);
 	spl("	 ");
 
 	mx_centre = 13.00;
@@ -127,6 +158,9 @@ void setup() {
 
 	fast_mn = fast_mx = slow_mn = slow_mx = axis_acc;
 	slow_acc = axis_acc;
+
+	ourBtn.registerCallbacks(NULL, ourbtn_released_cb, ourbtn_pressed_dur_cb, NULL);
+	PLAY_SHAVE();
 }
 
 #define DELAY_SAMPLE_US 10000
@@ -161,27 +195,54 @@ void loop() {
 		/* Threshold tests: */
 
 		/* Minimum threshold above slow_min. Hard coded. */
-		/* if (slow_mx < slow_mn + MIN_ACC_THRESH) */
-		/* 	slow_mx = slow_mn + MIN_ACC_THRESH; */
+		if (slow_mx < slow_mn + MIN_ACC_THRESH)
+			slow_mx = slow_mn + MIN_ACC_THRESH;
+
+		int16_t slow_range = slow_mx - slow_mn;
+
 		/* At least 3 times the noise level (3 * mx-mn) */
+		float swbase_new = slow_mn - (slow_range)*3;
+		static float swbase = swbase_new;
+		swbase += (swbase_new - swbase)/10000;
+
 		int triglvl = (slow_mx-slow_mn)*.75 + slow_mn;
 		if (triglvl - slow_mn < ((float)fast_mx-fast_mn)*3)
 			triglvl = slow_mn + ((float)fast_mx-fast_mn)*3;
-		int untriglvl = (slow_mx-slow_mn)*.20 + slow_mn;
+		int untriglvl = (slow_range)*.52 + slow_mn;
 
 		mv = rb_get_last(rb_med, 0);
 		slow_acc += (mv - slow_acc)/8;
 
+		if (mode == MO_CALQUICK) {
+			slow_mx = fast_mx;
+			slow_mn = fast_mn;
+			slow_range = slow_mx - slow_mn;
+			swbase = slow_mn - (slow_range)*3;
+			rb_setall(rb, mv);
+			mode = MO_CALQUICK_DONE;
+		}
+
 		static int trigger = 0;
-		if (slow_acc > triglvl) trigger = 1;
-		else if (slow_acc < untriglvl) trigger = 0;
+		if (slow_acc > triglvl) {
+			if (!trigger) {
+				tone_freq_durms(430, 40);
+				SEND_TRIGGERED();
+			}
+			trigger = 1;
+		} else if (slow_acc < untriglvl) {
+			if (trigger) {
+				tone_freq_durms(380, 30);
+				SEND_RELEASED();
+			}
+			trigger = 0;
+		}
 
 		sp(" med:");  sp(mv);
 		sp(" smed:"); sp(slow_acc);
 		sp(" smn:");  sp(slow_mn);
 		sp(" raw:");  sp(axis_acc);
 		sp(" smx:");  sp(slow_mx);
-		sp(" SW:");   sp(-4500 + trigger*100);
+		sp(" SW:");   sp(swbase + (trigger * slow_range/2));
 		sp(" lvl:");  sp(triglvl);
 		sp(" ulvl:"); sp(untriglvl);
 		sp(" fmx:");  sp(fast_mx);

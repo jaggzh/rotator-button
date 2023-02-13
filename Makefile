@@ -15,8 +15,15 @@ tests/test: tests/test.c ringbuffer/ringbuffer.c
 		-Wall -o "$@" \
 		$^
 
+tags:
+	ctags *.ino *.c *.cpp *.h
+
 vi:
 	vim Makefile \
+		defines.h \
 		mpu9250-test.ino \
+		tone.cpp \
+		tone.h \
+		pitches.h \
 		~/Arduino/libraries/libtrb/src/ringbuffer.c \
 		~/Arduino/libraries/libtrb/src/trb.h
