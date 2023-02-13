@@ -2,7 +2,7 @@
 
 This is the Arduino sketch/project for a self-calibrating self-zeroing button for use by a patient.
 
-[![Video of 3d model of hand-held (palm-held) button:](https://img.youtube.com/vi/lR_kUQ13Uhk/maxresdefault.jpg)](https://www.youtube.com/watch?v=lR_kUQ13Uhk)
+[![Video of 3d model of hand-held (palm-held) button:](https://img.youtube.com/vi/lR_kUQ13Uhk/maxresdefault.jpg "Hand-held button")](https://www.youtube.com/watch?v=lR_kUQ13Uhk)
 
 ## Questions
 
@@ -24,7 +24,7 @@ With sensor fusion (merging accelerometer, gyroscope, and possibly magnetometer 
 
 This is an older display of some of the data.  The newer processing and output are more elaborate but I don't have a video of it yet:
 
-[![Video of accelerometer data, median filtered result, and max/min envelopes](https://img.youtube.com/vi/tvhn7LEv6tM/maxresdefault.jpg)](https://www.youtube.com/watch?v=tvhn7LEv6tM)
+[![Video of accelerometer data, median filtered result, and max/min envelopes](https://img.youtube.com/vi/tvhn7LEv6tM/maxresdefault.jpg "Youtube Video of Accelerometer Data - Processed Output")](https://www.youtube.com/watch?v=tvhn7LEv6tM)
 
 
 ### 3d design
