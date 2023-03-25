@@ -1,4 +1,5 @@
 // #define DO_RUN_CALIBRATION_EVAL
+//#define DEBUG_SHOW_ALL_VALUES
 
 /* Axis of acceleration
  * (we use x axis, but if board orientation is changed... */
@@ -41,9 +42,7 @@ float Axyz[3];
 float Gxyz[3];
 float Mxyz[3];
 
-static InputDebounce ourBtn(PIN_BTN_OURS,
-                            20,
-                            InputDebounce::PIM_INT_PULL_UP_RES);
+static InputDebounce ourBtn;
 
 #define sample_num_mdate  5000
 
@@ -95,6 +94,7 @@ void update_sensor_data(void) {
 
 void ourbtn_released_cb(uint8_t pinIn) {
 	(void)pinIn; // unused
+	spl("Button released");
 	if (mode == MO_CALQUICK_DONE) {
 		mode = MO_NORMAL;
 	}
@@ -102,8 +102,10 @@ void ourbtn_released_cb(uint8_t pinIn) {
 void ourbtn_pressed_dur_cb(uint8_t pinIn, unsigned long dur) {
 	(void)pinIn; // unused
 	(void)dur;
+	spl("Button pressed");
 	if (mode == MO_NORMAL) {
 		tone_freq_durms(440, 200);
+		tone_freq_durms(480, 200);
 		mode = MO_CALQUICK;
 	}
 }
@@ -160,18 +162,24 @@ void setup() {
 	slow_acc = axis_acc;
 
 	ourBtn.registerCallbacks(NULL, ourbtn_released_cb, ourbtn_pressed_dur_cb, NULL);
+	ourBtn.setup(PIN_BTN_OURS, 20, InputDebounce::PIM_INT_PULL_UP_RES);
+
 	PLAY_SHAVE();
+	spl("Initialized. We're on our way");
 }
 
 #define DELAY_SAMPLE_US 10000
+#define DELAY_BTN_TEST_US 10000
 #define DELAY_PLOT_US   13000
 
 void loop() {
 	RB_DTYPE mv;
 	unsigned long cmicros = micros();
+	unsigned long cmillis = millis();
 	static unsigned long last_loop_us = cmicros;
 	static unsigned long last_sample_us = cmicros;
 	static unsigned long last_plot_us = cmicros;
+	static unsigned long last_inpdeb_us = cmicros;
 	#ifdef DO_RUN_CALIBRATION_EVAL
 		spl("Done. restart without Mxyz_init_calibrated()");
 		delay(5000);
@@ -179,6 +187,10 @@ void loop() {
 	#endif
 
 
+	if (cmicros-last_inpdeb_us >= DELAY_BTN_TEST_US) {
+		last_inpdeb_us = cmicros;
+		ourBtn.process(cmillis);
+	}
 	if (cmicros-last_sample_us >= DELAY_SAMPLE_US) {
 		last_sample_us = cmicros;
 
@@ -237,19 +249,23 @@ void loop() {
 			trigger = 0;
 		}
 
-		sp(" med:");  sp(mv);
-		sp(" smed:"); sp(slow_acc);
-		sp(" smn:");  sp(slow_mn);
-		sp(" raw:");  sp(axis_acc);
-		sp(" smx:");  sp(slow_mx);
-		sp(" SW:");   sp(swbase + (trigger * slow_range/2));
-		sp(" lvl:");  sp(triglvl);
-		sp(" ulvl:"); sp(untriglvl);
-		sp(" fmx:");  sp(fast_mx);
-		sp(" fmn:");  sp(fast_mn);
-		/* sp(" us:");  sp(cmicros-last_loop_us); */
-		/* last_loop_us = cmicros; */
-		spl("");
+		#ifdef DEBUG_SHOW_ALL_VALUES
+			sp(" med:");  sp(mv);
+			sp(" smed:"); sp(slow_acc);
+			sp(" smn:");  sp(slow_mn);
+			sp(" raw:");  sp(axis_acc);
+			sp(" smx:");  sp(slow_mx);
+			sp(" SW:");   sp(swbase + (trigger * slow_range/2));
+			sp(" lvl:");  sp(triglvl);
+			sp(" ulvl:"); sp(untriglvl);
+			sp(" fmx:");  sp(fast_mx);
+			sp(" fmn:");  sp(fast_mn);
+			/* sp(" us:");  sp(cmicros-last_loop_us); */
+			/* last_loop_us = cmicros; */
+			spl("");
+		/* #else */
+		/* 	spl(digitalRead(PIN_BTN_OURS)); */
+		#endif
 	}
 
 	/* sp(" mn:"); sp(rb->mn); */

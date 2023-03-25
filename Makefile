@@ -15,13 +15,13 @@ tests/test: tests/test.c ringbuffer/ringbuffer.c
 		-Wall -o "$@" \
 		$^
 
-tags:
-	ctags *.ino *.c *.cpp *.h
+tags: *.ino *.cpp *.h
+	ctags *.ino *.cpp *.h
 
 vi:
 	vim Makefile \
 		defines.h \
-		mpu9250-test.ino \
+		rotational-button-for-feeding-pump.ino \
 		tone.cpp \
 		tone.h \
 		pitches.h \
